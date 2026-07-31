@@ -31,6 +31,31 @@
   const refVisitas = ref(db, `visitas/${CONDOMINIO}`);
 
   // ───────────────────────────────────────────────────────
+  // ── FECHA LOCAL SANTA CRUZ (UTC-4)
+  window.fechaHoySC = function() {
+    const sc = new Date(new Date().getTime() - 4 * 60 * 60 * 1000);
+    return sc.toISOString().slice(0, 10);
+  };
+  window.horaTextoSC = function(date) {
+    const sc = new Date(date.getTime() - 4 * 60 * 60 * 1000);
+    return sc.toISOString().slice(11, 16);
+  };
+  window.fechaTextoSC = function(date) {
+    const sc = new Date(date.getTime() - 4 * 60 * 60 * 1000);
+    const d = sc.getUTCDate().toString().padStart(2,'0');
+    const m = (sc.getUTCMonth()+1).toString().padStart(2,'0');
+    const y = sc.getUTCFullYear();
+    return d + '/' + m + '/' + y;
+  };
+  window.fechaISOSC = function(date) {
+    const sc = new Date(date.getTime() - 4 * 60 * 60 * 1000);
+    return sc.toISOString().slice(0, 10);
+  };
+  const fechaHoySC = window.fechaHoySC;
+  const horaTextoSC = window.horaTextoSC;
+  const fechaTextoSC = window.fechaTextoSC;
+  const fechaISOSC = window.fechaISOSC;
+
   //  MODO DEL DISPOSITIVO
   // ───────────────────────────────────────────────────────
   let modoActual = localStorage.getItem("csp_modo") || null;
