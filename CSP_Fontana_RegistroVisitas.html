@@ -178,14 +178,14 @@
   };
 
   function renderizarBitacora() {
-    const hoy = new Date().toISOString().slice(0,10);
+    const hoy = fechaHoySC();
     let entradas = Object.entries(todasVisitas)
       .sort((a,b) => new Date(b[1].horaIngreso) - new Date(a[1].horaIngreso));
 
     // Filtro
     if (filtroActual === "dentro")   entradas = entradas.filter(([k,v]) => v.estado === "dentro");
     if (filtroActual === "salidos")  entradas = entradas.filter(([k,v]) => v.estado === "salió");
-    if (filtroActual === "hoy")      entradas = entradas.filter(([k,v]) => v.fechaISO === hoy);
+    if (filtroActual === "hoy")      entradas = entradas.filter(([k,v]) => v.fechaISO === fechaHoySC());
     if (["visita","delivery","servicio","proveedor"].includes(filtroActual))
       entradas = entradas.filter(([k,v]) => v.tipo?.toLowerCase() === filtroActual);
 
@@ -235,14 +235,16 @@
   //  CONTADORES
   // ───────────────────────────────────────────────────────
   function actualizarContadores() {
-    const hoy = new Date().toISOString().slice(0,10);
+    const hoy = fechaHoySC();
     const vals = Object.values(todasVisitas);
     const hoyVals = vals.filter(v => v.fechaISO === hoy);
 
-    document.getElementById("cnt_hoy").textContent    = hoyVals.length;
-    document.getElementById("cnt_dentro").textContent = vals.filter(v => v.estado === "dentro").length;
-    document.getElementById("cnt_delivery").textContent = hoyVals.filter(v => v.tipo?.toLowerCase() === "delivery").length;
+    document.getElementById("cnt_hoy").textContent       = hoyVals.length;
+    document.getElementById("cnt_dentro").textContent    = vals.filter(v => v.estado === "dentro").length;
+    document.getElementById("cnt_visita").textContent    = hoyVals.filter(v => v.tipo?.toLowerCase() === "visita").length;
+    document.getElementById("cnt_delivery").textContent  = hoyVals.filter(v => v.tipo?.toLowerCase() === "delivery").length;
     document.getElementById("cnt_servicios").textContent = hoyVals.filter(v => v.tipo?.toLowerCase() === "servicio").length;
+    document.getElementById("cnt_proveedor").textContent = hoyVals.filter(v => v.tipo?.toLowerCase() === "proveedor").length;
   }
 
   // ───────────────────────────────────────────────────────
@@ -281,6 +283,226 @@
   window.exportarPDF = function() {
     window.print();
   };
+
+
+  // ───────────────────────────────────────────────────────
+  //  MÓDULO QR
+  // ───────────────────────────────────────────────────────
+  let qrDataActual = null;
+
+  window.mostrarCampoFecha = function() {
+    const v = document.getElementById("qr_validez").value;
+    document.getElementById("campo_fecha").style.display = v === "puntual" ? "block" : "none";
+    document.getElementById("campo_dias").style.display  = v === "recurrente" ? "block" : "none";
+  };
+
+  window.generarQR = async function() {
+    const nombre  = document.getElementById("qr_nombre").value.trim();
+    const tipo    = document.getElementById("qr_tipo").value;
+    const unidad  = document.getElementById("qr_unidad").value.trim();
+    const validez = document.getElementById("qr_validez").value;
+    const fecha   = document.getElementById("qr_fecha")?.value || "";
+    const dias    = document.getElementById("qr_dias")?.value || "";
+    const ci      = document.getElementById("qr_ci").value.trim();
+
+    if (!nombre || !tipo || !unidad) { mostrarAlerta("Completá los campos obligatorios (*).","error"); return; }
+
+    // Calcular fecha fin para recurrente
+    let fechaFin = "";
+    if (validez === "recurrente" && dias) {
+      const d = new Date();
+      d.setDate(d.getDate() + parseInt(dias));
+      fechaFin = d.toISOString().slice(0,10);
+    }
+    if (validez === "puntual") fechaFin = fecha;
+
+    const ahora = new Date();
+    const qrId  = "QR_" + Date.now();
+
+    const qrData = {
+      id: qrId, nombre, tipo, unidad, ci,
+      validez, fecha: validez === "puntual" ? fecha : "",
+      fechaFin, dias: parseInt(dias) || 0,
+      creadoEn: ahora.toISOString(),
+      creadoFecha: fechaTextoSC(ahora),
+      activo: true,
+      condominio: "Condominio Fontana Family Club"
+    };
+
+    // Guardar en Firebase
+    await push(refVisitas.parent.child ? refVisitas : ref(db, \`visitas/qr_fontana_family_club\`), qrData);
+    // Guardar referencia separada para QR
+    const qrRef = ref(db, \`qr/fontana_family_club/\${qrId}\`);
+    await set(qrRef, qrData);
+
+    qrDataActual = qrData;
+
+    // Generar QR visual
+    const qrPayload = JSON.stringify({ qrId, nombre, tipo, unidad, ci, validez, fechaFin, condominio: "fontana_family_club" });
+
+    const qrUrl = \`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=\${encodeURIComponent(qrPayload)}&bgcolor=0d1b3e&color=c9a227&margin=10\`;
+
+    document.getElementById("qr_canvas").innerHTML = \`<img src="\${qrUrl}" style="border-radius:8px;border:2px solid #c9a227;" id="qr_img" alt="QR">\`;
+    document.getElementById("qr_label_nombre").textContent = nombre;
+    document.getElementById("qr_label_detalle").textContent = tipo + " · " + unidad;
+
+    let validezTexto = "";
+    if (validez === "sin_limite") validezTexto = "✅ Sin límite de tiempo";
+    else if (validez === "puntual") validezTexto = "📅 Válido solo el: " + fecha;
+    else if (validez === "recurrente") validezTexto = "🔄 Válido por " + dias + " días (hasta " + fechaFin + ")";
+    document.getElementById("qr_label_validez").textContent = validezTexto;
+    document.getElementById("qr_resultado").style.display = "block";
+
+    // Limpiar formulario
+    ["qr_nombre","qr_ci","qr_unidad","qr_fecha","qr_dias"].forEach(id => { const el = document.getElementById(id); if(el) el.value = ""; });
+    document.getElementById("qr_tipo").selectedIndex = 0;
+    document.getElementById("qr_validez").selectedIndex = 0;
+    document.getElementById("campo_fecha").style.display = "none";
+    document.getElementById("campo_dias").style.display = "none";
+
+    mostrarAlerta("✔ QR generado correctamente.", "ok");
+    renderizarQRActivos();
+  };
+
+  window.descargarQR = function() {
+    if (!qrDataActual) return;
+    const img = document.getElementById("qr_img");
+    const a = document.createElement("a");
+    a.href = img.src;
+    a.download = \`QR_\${qrDataActual.nombre.replace(/ /g,"_")}_Fontana.png\`;
+    a.click();
+  };
+
+  window.compartirQR = function() {
+    if (!qrDataActual) return;
+    const v = qrDataActual;
+    let validezTexto = "";
+    if (v.validez === "sin_limite") validezTexto = "sin límite de tiempo";
+    else if (v.validez === "puntual") validezTexto = "válido el " + v.fecha;
+    else if (v.validez === "recurrente") validezTexto = "válido por " + v.dias + " días";
+
+    const msg = encodeURIComponent(
+      "Hola " + v.nombre + ", tu código QR de acceso para " + v.condominio + " está listo. " +
+      "Tipo: " + v.tipo + " · Unidad: " + v.unidad + " · Validez: " + validezTexto + ". " +
+      "Mostrá este QR al guardia al ingresar."
+    );
+    window.open("https://wa.me/?text=" + msg, "_blank");
+  };
+
+  // Escuchar QR activos
+  function escucharQRActivos() {
+    onValue(ref(db, "qr/fontana_family_club"), snap => {
+      window._qrActivos = snap.val() || {};
+      renderizarQRActivos();
+    });
+  }
+
+  function renderizarQRActivos() {
+    const cont = document.getElementById("lista_qr_activos");
+    if (!cont) return;
+    const lista = Object.entries(window._qrActivos || {})
+      .sort((a,b) => new Date(b[1].creadoEn) - new Date(a[1].creadoEn));
+    if (!lista.length) { cont.innerHTML = '<div class="empty">Sin QR generados.</div>'; return; }
+
+    const hoy = new Date().toISOString().slice(0,10);
+    cont.innerHTML = lista.map(([k,v]) => {
+      let vencido = false;
+      if (v.validez === "puntual" && v.fecha < hoy) vencido = true;
+      if (v.validez === "recurrente" && v.fechaFin && v.fechaFin < hoy) vencido = true;
+
+      let validezTexto = "";
+      if (v.validez === "sin_limite") validezTexto = "Sin límite";
+      else if (v.validez === "puntual") validezTexto = "📅 " + v.fecha;
+      else if (v.validez === "recurrente") validezTexto = "🔄 " + v.dias + " días hasta " + v.fechaFin;
+
+      return \`
+        <div style="background:#0d1b3e;border:0.5px solid \${vencido?'#c0392b':'#2a3a6e'};border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div style="flex:1;">
+            <div style="font-weight:600;font-size:0.88rem;color:\${vencido?'#8899bb':'#dde4f0'}">\${v.nombre} \${vencido?'<span style="color:#c0392b;font-size:0.72rem">(Vencido)</span>':''}</div>
+            <div style="font-size:0.75rem;color:#8899bb;">\${v.tipo} · \${v.unidad} · \${validezTexto}</div>
+            <div style="font-size:0.72rem;color:#6677aa;">Generado: \${v.creadoFecha}</div>
+          </div>
+          <button class="btn-sm" style="background:#3a1a1a;color:#ff6666;border:1px solid #c0392b;" onclick="revocarQR('\${k}')">✕ Revocar</button>
+        </div>
+      \`;
+    }).join("");
+  }
+
+  window.revocarQR = async function(k) {
+    if (confirm("¿Revocar este QR? El visitante no podrá usarlo.")) {
+      await remove(ref(db, \`qr/fontana_family_club/\${k}\`));
+      mostrarAlerta("QR revocado.", "ok");
+    }
+  };
+
+  // Llamar al inicio
+  escucharQRActivos();
+
+  // ───────────────────────────────────────────────────────
+  //  ESCANEO QR (modo guardia ingreso)
+  // ───────────────────────────────────────────────────────
+  window.iniciarEscaneoQR = async function() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.capture = "environment";
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      // Usar jsQR para decodificar
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width; canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = window.jsQR ? window.jsQR(imageData.data, imageData.width, imageData.height) : null;
+        if (code) {
+          procesarQREscaneado(code.data);
+        } else {
+          mostrarAlerta("No se pudo leer el QR. Intentá de nuevo.", "error");
+        }
+      };
+      img.src = URL.createObjectURL(file);
+    };
+    input.click();
+  };
+
+  async function procesarQREscaneado(data) {
+    try {
+      const qrData = JSON.parse(data);
+      const hoy = new Date().toISOString().slice(0,10);
+
+      // Verificar validez
+      if (qrData.validez === "puntual" && qrData.fechaFin && qrData.fechaFin < hoy) {
+        mostrarAlerta("❌ QR vencido. No autorizado.", "error"); return;
+      }
+      if (qrData.validez === "recurrente" && qrData.fechaFin && qrData.fechaFin < hoy) {
+        mostrarAlerta("❌ QR vencido. No autorizado.", "error"); return;
+      }
+
+      // Verificar que el QR existe en Firebase (no fue revocado)
+      const snap = await get(ref(db, \`qr/fontana_family_club/\${qrData.qrId}\`));
+      if (!snap.exists()) {
+        mostrarAlerta("❌ QR revocado o inválido.", "error"); return;
+      }
+
+      // Pre-completar formulario de ingreso
+      document.getElementById("inp_nombre").value = qrData.nombre || "";
+      document.getElementById("inp_ci").value = qrData.ci || "";
+      document.getElementById("inp_unidad").value = qrData.unidad || "";
+      const tipoSel = document.getElementById("inp_tipo");
+      for (let i = 0; i < tipoSel.options.length; i++) {
+        if (tipoSel.options[i].value === qrData.tipo) { tipoSel.selectedIndex = i; break; }
+      }
+      document.getElementById("inp_obs").value = "Ingreso por QR autorizado";
+
+      mostrarAlerta(\`✅ QR válido — \${qrData.nombre}. Confirmá el ingreso.\`, "ok");
+    } catch(e) {
+      mostrarAlerta("QR inválido o no reconocido.", "error");
+    }
+  }
 
   // ───────────────────────────────────────────────────────
   //  ALERTAS
@@ -411,7 +633,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Arial
 .stats-grid {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px;
 }
-@media (max-width: 600px) { .stats-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .stats-grid { grid-template-columns: repeat(3, 1fr) !important; } }
 .stat-card {
   background: var(--card); border-radius: 10px; padding: 12px;
   display: flex; align-items: center; gap: 10px;
@@ -616,6 +838,7 @@ tr:hover td { background: rgba(201,162,39,0.05); }
     }
   };
   </script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 </head>
 <body>
 
@@ -681,11 +904,13 @@ tr:hover td { background: rgba(201,162,39,0.05); }
   <div class="app-body">
 
     <!-- Contadores -->
-    <div class="stats-grid">
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);">
       <div class="stat-card"><span class="stat-ico">👥</span><div><div class="stat-num" id="cnt_hoy">0</div><div class="stat-lbl">TOTAL HOY</div></div></div>
       <div class="stat-card"><span style="width:18px;height:18px;border-radius:50%;background:#27ae60;flex-shrink:0;display:inline-block;"></span><div style="margin-left:4px"><div class="stat-num" id="cnt_dentro">0</div><div class="stat-lbl">DENTRO</div></div></div>
+      <div class="stat-card"><span class="stat-ico">🧑</span><div><div class="stat-num" id="cnt_visita">0</div><div class="stat-lbl">VISITA</div></div></div>
       <div class="stat-card"><span class="stat-ico">📦</span><div><div class="stat-num" id="cnt_delivery">0</div><div class="stat-lbl">DELIVERY</div></div></div>
-      <div class="stat-card"><span class="stat-ico">🔧</span><div><div class="stat-num" id="cnt_servicios">0</div><div class="stat-lbl">SERVICIOS</div></div></div>
+      <div class="stat-card"><span class="stat-ico">🔧</span><div><div class="stat-num" id="cnt_servicios">0</div><div class="stat-lbl">SERVICIO</div></div></div>
+      <div class="stat-card"><span class="stat-ico">🏢</span><div><div class="stat-num" id="cnt_proveedor">0</div><div class="stat-lbl">PROVEEDOR</div></div></div>
     </div>
 
     <!-- SECCIÓN: INGRESO -->
@@ -734,7 +959,10 @@ tr:hover td { background: rgba(201,162,39,0.05); }
               <textarea id="inp_obs" class="field-ta" placeholder="Notas adicionales..."></textarea>
             </div>
           </div>
-          <button class="btn-reg" onclick="registrarIngreso()">↓ REGISTRAR INGRESO</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-reg" onclick="registrarIngreso()" style="flex:1;">↓ REGISTRAR INGRESO</button>
+            <button class="btn-reg" onclick="iniciarEscaneoQR()" style="flex:0 0 auto;background:#1e3170;color:#c9a227;border:1px solid #c9a227;">📷 Escanear QR</button>
+          </div>
         </div>
       </div>
     </div>
@@ -751,6 +979,76 @@ tr:hover td { background: rgba(201,162,39,0.05); }
 
     <!-- SECCIÓN: ADMIN — EXPORTAR -->
     <div id="seccionAdmin" style="display:none;">
+
+      <!-- GENERADOR DE QR -->
+      <div class="seccion">
+        <div class="sec-header"><span>📲</span><span class="sec-title">GENERAR QR DE ACCESO</span></div>
+        <div class="sec-body">
+          <div class="form-grid">
+            <div class="form-full">
+              <div class="field-lbl">NOMBRE DEL VISITANTE *</div>
+              <input id="qr_nombre" class="field-inp" placeholder="Nombre completo">
+            </div>
+            <div>
+              <div class="field-lbl">TIPO DE VISITA *</div>
+              <select id="qr_tipo" class="field-sel">
+                <option value="">Seleccionar...</option>
+                <option value="Visita">Visita</option>
+                <option value="Delivery">Delivery</option>
+                <option value="Servicio">Servicio</option>
+                <option value="Proveedor">Proveedor</option>
+                <option value="Personal doméstico">Personal doméstico</option>
+              </select>
+            </div>
+            <div>
+              <div class="field-lbl">UNIDAD / RESIDENTE *</div>
+              <input id="qr_unidad" class="field-inp" placeholder="Ej: Casa 12 — García">
+            </div>
+            <div>
+              <div class="field-lbl">VALIDEZ</div>
+              <select id="qr_validez" class="field-sel" onchange="mostrarCampoFecha()">
+                <option value="sin_limite">Sin límite de tiempo</option>
+                <option value="puntual">Fecha puntual</option>
+                <option value="recurrente">Recurrente (N días)</option>
+              </select>
+            </div>
+            <div id="campo_fecha" style="display:none;">
+              <div class="field-lbl">FECHA DE VISITA</div>
+              <input type="date" id="qr_fecha" class="field-inp">
+            </div>
+            <div id="campo_dias" style="display:none;">
+              <div class="field-lbl">CANTIDAD DE DÍAS</div>
+              <input type="number" id="qr_dias" class="field-inp" placeholder="Ej: 30" min="1" max="365">
+            </div>
+            <div class="form-full">
+              <div class="field-lbl">CI / PASAPORTE (opcional)</div>
+              <input id="qr_ci" class="field-inp" placeholder="Documento de identidad">
+            </div>
+          </div>
+          <button class="btn-reg" onclick="generarQR()">📲 Generar QR</button>
+
+          <div id="qr_resultado" style="display:none; margin-top:16px;">
+            <div style="background:#0d1b3e;border:1px solid #2a3a6e;border-radius:10px;padding:16px;text-align:center;">
+              <div style="font-size:0.8rem;color:#8899bb;margin-bottom:8px;">QR generado para:</div>
+              <div style="font-size:1rem;font-weight:700;color:#c9a227;margin-bottom:4px;" id="qr_label_nombre"></div>
+              <div style="font-size:0.8rem;color:#dde4f0;margin-bottom:12px;" id="qr_label_detalle"></div>
+              <div id="qr_canvas" style="display:flex;justify-content:center;margin-bottom:14px;"></div>
+              <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+                <button class="btn-exp" onclick="descargarQR()">⬇ Descargar QR</button>
+                <button class="btn-exp" onclick="compartirQR()" style="background:#25D366;color:#fff;border-color:#25D366;">📤 WhatsApp</button>
+              </div>
+              <div style="font-size:0.72rem;color:#8899bb;margin-top:10px;" id="qr_label_validez"></div>
+            </div>
+          </div>
+
+          <div style="margin-top:16px;">
+            <div style="font-size:0.85rem;font-weight:700;color:#c9a227;margin-bottom:8px;">QR ACTIVOS</div>
+            <div id="lista_qr_activos"><div class="empty">Sin QR generados.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EXPORTAR -->
       <div class="seccion">
         <div class="sec-header"><span>📊</span><span class="sec-title">EXPORTAR REPORTES</span></div>
         <div class="sec-body">
