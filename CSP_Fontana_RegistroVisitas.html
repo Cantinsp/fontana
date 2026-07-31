@@ -330,7 +330,7 @@
     };
 
     // Guardar en Firebase
-    await push(refVisitas.parent.child ? refVisitas : ref(db, \`visitas/qr_fontana_family_club\`), qrData);
+    await push(ref(db, "visitas/qr_fontana_family_club"), qrData);
     // Guardar referencia separada para QR
     const qrRef = ref(db, \`qr/fontana_family_club/\${qrId}\`);
     await set(qrRef, qrData);
