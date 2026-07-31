@@ -332,7 +332,7 @@
     // Guardar en Firebase
     await push(ref(db, "visitas/qr_fontana_family_club"), qrData);
     // Guardar referencia separada para QR
-    const qrRef = ref(db, \`qr/fontana_family_club/\${qrId}\`);
+    const qrRef = ref(db, "qr/fontana_family_club/" + qrId);
     await set(qrRef, qrData);
 
     qrDataActual = qrData;
@@ -340,9 +340,9 @@
     // Generar QR visual
     const qrPayload = JSON.stringify({ qrId, nombre, tipo, unidad, ci, validez, fechaFin, condominio: "fontana_family_club" });
 
-    const qrUrl = \`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=\${encodeURIComponent(qrPayload)}&bgcolor=0d1b3e&color=c9a227&margin=10\`;
+    const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + encodeURIComponent(qrPayload) + "&bgcolor=0d1b3e&color=c9a227&margin=10";
 
-    document.getElementById("qr_canvas").innerHTML = \`<img src="\${qrUrl}" style="border-radius:8px;border:2px solid #c9a227;" id="qr_img" alt="QR">\`;
+    document.getElementById("qr_canvas").innerHTML = "<img src='" + qrUrl + "' style='border-radius:8px;border:2px solid #c9a227;' id='qr_img' alt='QR'>";
     document.getElementById("qr_label_nombre").textContent = nombre;
     document.getElementById("qr_label_detalle").textContent = tipo + " · " + unidad;
 
@@ -369,7 +369,7 @@
     const img = document.getElementById("qr_img");
     const a = document.createElement("a");
     a.href = img.src;
-    a.download = \`QR_\${qrDataActual.nombre.replace(/ /g,"_")}_Fontana.png\`;
+    a.download = "QR_" + qrDataActual.nombre.replace(/ /g,"_") + "_Fontana.png";
     a.click();
   };
 
@@ -415,22 +415,23 @@
       else if (v.validez === "puntual") validezTexto = "📅 " + v.fecha;
       else if (v.validez === "recurrente") validezTexto = "🔄 " + v.dias + " días hasta " + v.fechaFin;
 
-      return \`
-        <div style="background:#0d1b3e;border:0.5px solid \${vencido?'#c0392b':'#2a3a6e'};border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <div style="flex:1;">
-            <div style="font-weight:600;font-size:0.88rem;color:\${vencido?'#8899bb':'#dde4f0'}">\${v.nombre} \${vencido?'<span style="color:#c0392b;font-size:0.72rem">(Vencido)</span>':''}</div>
-            <div style="font-size:0.75rem;color:#8899bb;">\${v.tipo} · \${v.unidad} · \${validezTexto}</div>
-            <div style="font-size:0.72rem;color:#6677aa;">Generado: \${v.creadoFecha}</div>
-          </div>
-          <button class="btn-sm" style="background:#3a1a1a;color:#ff6666;border:1px solid #c0392b;" onclick="revocarQR('\${k}')">✕ Revocar</button>
-        </div>
-      \`;
+      var borderColor = vencido ? '#c0392b' : '#2a3a6e';
+      var nameColor = vencido ? '#8899bb' : '#dde4f0';
+      var vencidoSpan = vencido ? '<span style="color:#c0392b;font-size:0.72rem">(Vencido)</span>' : '';
+      return '<div style="background:#0d1b3e;border:0.5px solid ' + borderColor + ';border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+        '<div style="flex:1;">' +
+        '<div style="font-weight:600;font-size:0.88rem;color:' + nameColor + '">' + v.nombre + ' ' + vencidoSpan + '</div>' +
+        '<div style="font-size:0.75rem;color:#8899bb;">' + v.tipo + ' · ' + v.unidad + ' · ' + validezTexto + '</div>' +
+        '<div style="font-size:0.72rem;color:#6677aa;">Generado: ' + v.creadoFecha + '</div>' +
+        '</div>' +
+        '<button class="btn-sm" style="background:#3a1a1a;color:#ff6666;border:1px solid #c0392b;" onclick="revocarQR('' + k + '')">✕ Revocar</button>' +
+        '</div>';
     }).join("");
   }
 
   window.revocarQR = async function(k) {
     if (confirm("¿Revocar este QR? El visitante no podrá usarlo.")) {
-      await remove(ref(db, \`qr/fontana_family_club/\${k}\`));
+      await remove(ref(db, "qr/fontana_family_club/" + k));
       mostrarAlerta("QR revocado.", "ok");
     }
   };
@@ -483,7 +484,7 @@
       }
 
       // Verificar que el QR existe en Firebase (no fue revocado)
-      const snap = await get(ref(db, \`qr/fontana_family_club/\${qrData.qrId}\`));
+      const snap = await get(ref(db, "qr/fontana_family_club/" + qrData.qrId));
       if (!snap.exists()) {
         mostrarAlerta("❌ QR revocado o inválido.", "error"); return;
       }
@@ -498,7 +499,7 @@
       }
       document.getElementById("inp_obs").value = "Ingreso por QR autorizado";
 
-      mostrarAlerta(\`✅ QR válido — \${qrData.nombre}. Confirmá el ingreso.\`, "ok");
+      mostrarAlerta("✅ QR válido — " + qrData.nombre + ". Confirmá el ingreso.", "ok");
     } catch(e) {
       mostrarAlerta("QR inválido o no reconocido.", "error");
     }
