@@ -329,6 +329,7 @@
     const fecha   = document.getElementById("qr_fecha")?.value || "";
     const dias    = document.getElementById("qr_dias")?.value || "";
     const ci      = document.getElementById("qr_ci").value.trim();
+    const telefono = document.getElementById("qr_telefono").value.trim().replace(/[^0-9]/g,"");
 
     if (!nombre || !tipo || !unidad) { mostrarAlerta("Completá los campos obligatorios (*).","error"); return; }
 
@@ -345,7 +346,7 @@
     const qrId  = "QR_" + Date.now();
 
     const qrData = {
-      id: qrId, nombre, tipo, unidad, ci,
+      id: qrId, nombre, tipo, unidad, ci, telefono,
       validez, fecha: validez === "puntual" ? fecha : "",
       fechaFin, dias: parseInt(dias) || 0,
       creadoEn: ahora.toISOString(),
@@ -379,7 +380,7 @@
     document.getElementById("qr_resultado").style.display = "block";
 
     // Limpiar formulario
-    ["qr_nombre","qr_ci","qr_unidad","qr_fecha","qr_dias"].forEach(id => { const el = document.getElementById(id); if(el) el.value = ""; });
+    ["qr_nombre","qr_ci","qr_unidad","qr_fecha","qr_dias","qr_telefono"].forEach(id => { const el = document.getElementById(id); if(el) el.value = ""; });
     document.getElementById("qr_tipo").selectedIndex = 0;
     document.getElementById("qr_validez").selectedIndex = 0;
     document.getElementById("campo_fecha").style.display = "none";
@@ -404,14 +405,38 @@
     let validezTexto = "";
     if (v.validez === "sin_limite") validezTexto = "sin límite de tiempo";
     else if (v.validez === "puntual") validezTexto = "válido el " + v.fecha;
-    else if (v.validez === "recurrente") validezTexto = "válido por " + v.dias + " días";
+    else if (v.validez === "recurrente") validezTexto = "válido por " + v.dias + " días (hasta " + v.fechaFin + ")";
 
     const msg = encodeURIComponent(
-      "Hola " + v.nombre + ", tu código QR de acceso para " + v.condominio + " está listo. " +
-      "Tipo: " + v.tipo + " · Unidad: " + v.unidad + " · Validez: " + validezTexto + ". " +
-      "Mostrá este QR al guardia al ingresar."
+      "🏠 *Condominio Fontana Family Club*\n" +
+      "📲 *Código QR de Acceso*\n\n" +
+      "Visitante: *" + v.nombre + "*\n" +
+      "Tipo: " + v.tipo + "\n" +
+      "Unidad: " + v.unidad + "\n" +
+      "Validez: " + validezTexto + "\n\n" +
+      "✅ Por favor mostrá la imagen del QR al guardia al ingresar al condominio.\n" +
+      "_Generado por CSP Cantín Seguridad Privada_"
     );
-    window.open("https://wa.me/?text=" + msg, "_blank");
+
+    // Si tiene teléfono, abrir chat directo
+    const tel = v.telefono || "";
+    if (tel) {
+      window.open("https://wa.me/" + tel + "?text=" + msg, "_blank");
+    } else {
+      window.open("https://wa.me/?text=" + msg, "_blank");
+    }
+    
+    // Descargar automáticamente el QR para adjuntar
+    setTimeout(() => {
+      const img = document.getElementById("qr_img");
+      if (img) {
+        const a = document.createElement("a");
+        a.href = img.src;
+        a.download = "QR_" + v.nombre.replace(/ /g,"_") + "_Fontana.png";
+        a.click();
+        mostrarAlerta("📎 QR descargado — adjuntalo en WhatsApp", "ok");
+      }
+    }, 1000);
   };
 
   // Escuchar QR activos
@@ -1050,6 +1075,10 @@ tr:hover td { background: rgba(201,162,39,0.05); }
               <div class="field-lbl">CI / PASAPORTE (opcional)</div>
               <input id="qr_ci" class="field-inp" placeholder="Documento de identidad">
             </div>
+            <div class="form-full">
+              <div class="field-lbl">TELÉFONO DEL RESIDENTE (para enviar por WhatsApp)</div>
+              <input id="qr_telefono" class="field-inp" placeholder="Ej: 591 77712345" type="tel">
+            </div>
           </div>
           <button class="btn-reg" onclick="generarQR()">📲 Generar QR</button>
 
@@ -1061,7 +1090,7 @@ tr:hover td { background: rgba(201,162,39,0.05); }
               <div id="qr_canvas" style="display:flex;justify-content:center;margin-bottom:14px;"></div>
               <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
                 <button class="btn-exp" onclick="descargarQR()">⬇ Descargar QR</button>
-                <button class="btn-exp" onclick="compartirQR()" style="background:#25D366;color:#fff;border-color:#25D366;">📤 WhatsApp</button>
+                <button class="btn-exp" onclick="compartirQR()" style="background:#25D366;color:#fff;border-color:#25D366;">📤 Enviar por WhatsApp + Descargar QR</button>
               </div>
               <div style="font-size:0.72rem;color:#8899bb;margin-top:10px;" id="qr_label_validez"></div>
             </div>
