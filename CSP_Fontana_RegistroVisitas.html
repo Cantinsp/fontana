@@ -366,9 +366,114 @@
     // Generar QR visual
     const qrPayload = JSON.stringify({ qrId, nombre, tipo, unidad, ci, validez, fechaFin, condominio: "fontana_family_club" });
 
-    const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + encodeURIComponent(qrPayload) + "&bgcolor=0d1b3e&color=c9a227&margin=10";
+    const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(qrPayload) + "&bgcolor=0d1b3e&color=c9a227&margin=15";
 
-    document.getElementById("qr_canvas").innerHTML = "<img src='" + qrUrl + "' style='border-radius:8px;border:2px solid #c9a227;' id='qr_img' alt='QR'>";
+    // Cargar imagen QR y dibujar tarjeta en canvas
+    const qrImg = new Image();
+    qrImg.crossOrigin = "anonymous";
+    qrImg.onload = function() {
+      // Crear canvas para la tarjeta completa
+      const canvas = document.createElement("canvas");
+      canvas.width = 500;
+      canvas.height = 680;
+      canvas.id = "qr_card_canvas";
+      const ctx = canvas.getContext("2d");
+
+      // Fondo navy
+      ctx.fillStyle = "#0d1b3e";
+      ctx.fillRect(0, 0, 500, 680);
+
+      // Borde dorado
+      ctx.strokeStyle = "#c9a227";
+      ctx.lineWidth = 4;
+      ctx.strokeRect(8, 8, 484, 664);
+
+      // Línea dorada superior decorativa
+      ctx.fillStyle = "#c9a227";
+      ctx.fillRect(8, 8, 484, 6);
+
+      // Logo texto CSP
+      ctx.fillStyle = "#c9a227";
+      ctx.font = "bold 22px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("CANTÍN SEGURIDAD PRIVADA", 250, 55);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "14px Arial";
+      ctx.fillText("Condominio Fontana Family Club", 250, 80);
+
+      // Línea separadora
+      ctx.strokeStyle = "#c9a227";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(40, 95);
+      ctx.lineTo(460, 95);
+      ctx.stroke();
+
+      // Título QR de Acceso
+      ctx.fillStyle = "#c9a227";
+      ctx.font = "bold 18px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("📲 CÓDIGO QR DE ACCESO", 250, 125);
+
+      // Imagen QR centrada
+      ctx.drawImage(qrImg, 100, 140, 300, 300);
+
+      // Datos del visitante
+      ctx.fillStyle = "#c9a227";
+      ctx.font = "bold 16px Arial";
+      ctx.textAlign = "left";
+      ctx.fillText("Visitante:", 40, 465);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 20px Arial";
+      ctx.fillText(nombre.toUpperCase(), 40, 490);
+
+      ctx.fillStyle = "#8899bb";
+      ctx.font = "13px Arial";
+      ctx.fillText("Tipo: " + tipo + "   |   Unidad: " + unidad, 40, 515);
+
+      // Validez
+      let validezLabel = "";
+      if (validez === "sin_limite") validezLabel = "✅ Sin límite de tiempo";
+      else if (validez === "puntual") validezLabel = "📅 Válido el: " + fecha;
+      else if (validez === "recurrente") validezLabel = "🔄 Válido por " + dias + " días (hasta " + fechaFin + ")";
+
+      ctx.fillStyle = "#c9a227";
+      ctx.font = "bold 13px Arial";
+      ctx.fillText(validezLabel, 40, 540);
+
+      // Línea separadora inferior
+      ctx.strokeStyle = "#2a3a6e";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(40, 560);
+      ctx.lineTo(460, 560);
+      ctx.stroke();
+
+      // Instrucción
+      ctx.fillStyle = "#8899bb";
+      ctx.font = "12px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("Mostrá este código al guardia al ingresar", 250, 585);
+      ctx.fillStyle = "#6677aa";
+      ctx.font = "11px Arial";
+      ctx.fillText("Generado por CSP Cantín Seguridad Privada", 250, 610);
+
+      // Línea dorada inferior decorativa
+      ctx.fillStyle = "#c9a227";
+      ctx.fillRect(8, 666, 484, 6);
+
+      // Mostrar canvas
+      const cont = document.getElementById("qr_canvas");
+      cont.innerHTML = "";
+      canvas.style.maxWidth = "100%";
+      canvas.style.borderRadius = "10px";
+      cont.appendChild(canvas);
+
+      // Guardar data URL para descarga
+      window._qrCardDataURL = canvas.toDataURL("image/png");
+    };
+    qrImg.src = qrUrl;
     document.getElementById("qr_label_nombre").textContent = nombre;
     document.getElementById("qr_label_detalle").textContent = tipo + " · " + unidad;
 
@@ -391,12 +496,12 @@
   };
 
   window.descargarQR = function() {
-    if (!qrDataActual) return;
-    const img = document.getElementById("qr_img");
+    if (!qrDataActual || !window._qrCardDataURL) { mostrarAlerta("Generá el QR primero.", "error"); return; }
     const a = document.createElement("a");
-    a.href = img.src;
+    a.href = window._qrCardDataURL;
     a.download = "QR_" + qrDataActual.nombre.replace(/ /g,"_") + "_Fontana.png";
     a.click();
+    mostrarAlerta("✔ Tarjeta QR descargada en Descargas.", "ok");
   };
 
   window.compartirQR = function() {
@@ -428,13 +533,12 @@
     
     // Descargar automáticamente el QR para adjuntar
     setTimeout(() => {
-      const img = document.getElementById("qr_img");
-      if (img) {
+      if (window._qrCardDataURL) {
         const a = document.createElement("a");
-        a.href = img.src;
+        a.href = window._qrCardDataURL;
         a.download = "QR_" + v.nombre.replace(/ /g,"_") + "_Fontana.png";
         a.click();
-        mostrarAlerta("📎 QR descargado — adjuntalo en WhatsApp", "ok");
+        mostrarAlerta("📎 Tarjeta QR descargada — adjuntala en el chat de WhatsApp", "ok");
       }
     }, 1000);
   };
@@ -474,7 +578,7 @@
         '<div style="font-size:0.75rem;color:#8899bb;">' + v.tipo + ' · ' + v.unidad + ' · ' + validezTexto + '</div>' +
         '<div style="font-size:0.72rem;color:#6677aa;">Generado: ' + v.creadoFecha + '</div>' +
         '</div>' +
-        '<button class="btn-sm" style="background:#3a1a1a;color:#ff6666;border:1px solid #c0392b;" onclick="revocarQR(\"' + k + '\")">✕ Revocar</button>' +
+        '<button class="btn-sm" style="background:#3a1a1a;color:#ff6666;border:1px solid #c0392b;" onclick="revocarQR(\'' + k + '\')">✕ Revocar</button>' +
         '</div>';
     }).join("");
   }
