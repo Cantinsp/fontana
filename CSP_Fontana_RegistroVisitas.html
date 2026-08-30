@@ -165,6 +165,7 @@
     ["inp_nombre","inp_ci","inp_unidad","inp_residente","inp_placa","inp_empresa","inp_obs"]
       .forEach(id => document.getElementById(id).value = "");
     document.getElementById("inp_tipo").selectedIndex = 0;
+    document.getElementById("sugerencias").innerHTML = "";
   }
 
   // ───────────────────────────────────────────────────────
@@ -746,7 +747,8 @@
   //  AUTOCOMPLETADO
   // ───────────────────────────────────────────────────────
   document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("inp_nombre").addEventListener("input", async function() {
+    const inpNombre = document.getElementById("inp_nombre");
+    inpNombre.addEventListener("input", async function() {
       const val = this.value.trim();
       if (val.length < 3) { document.getElementById("sugerencias").innerHTML = ""; return; }
       const snap = await get(refVisitas);
@@ -757,11 +759,23 @@
           .map(v => [v.nombre, v])
       ).values()].slice(0,5);
 
-      document.getElementById("sugerencias").innerHTML = coincidencias.map(v => `
+      document.getElementById("sugerencias").innerHTML = coincidencias.length ? (`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 10px;font-size:0.72rem;color:var(--text2);background:var(--navy3);">
+          <span>Toque para autocompletar ↓</span>
+          <span onclick="document.getElementById('sugerencias').innerHTML=''" style="cursor:pointer;padding:2px 6px;">✕</span>
+        </div>
+      ` + coincidencias.map(v => `
         <div class="sug-item" onclick="autocompletar('${v.nombre}','${v.ci||''}','${v.unidad||''}','${v.residente||''}')">
           <strong>${v.nombre}</strong> — ${v.unidad || ""}
         </div>
-      `).join("");
+      `).join("")) : "";
+    });
+    // Si el guardia toca fuera del campo (por ej. para ir directo al
+    // siguiente campo) sin elegir una sugerencia, la ocultamos. El
+    // pequeño retraso deja que el "click" sobre una sugerencia se
+    // registre primero (el blur ocurre antes que el click).
+    inpNombre.addEventListener("blur", function() {
+      setTimeout(() => { document.getElementById("sugerencias").innerHTML = ""; }, 200);
     });
   });
 
@@ -901,7 +915,16 @@ body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Arial
 .btn-reg:hover { opacity: 0.88; }
 
 /* ── AUTOCOMPLETADO ── */
-#sugerencias { position: relative; }
+/* Antes esto era position:relative y empujaba hacia abajo el resto del
+   formulario (CI, Unidad, etc.), lo que hacía que un toque rápido en
+   secuencia cayera sobre una sugerencia y llenara los campos con datos
+   de una visita anterior sin que el guardia lo pidiera. Ahora flota
+   encima sin mover nada debajo. */
+#sugerencias {
+  position: absolute; left: 0; right: 0; top: 100%;
+  z-index: 50; max-height: 220px; overflow-y: auto;
+  border-radius: 0 0 8px 8px; box-shadow: 0 6px 14px rgba(0,0,0,.4);
+}
 .sug-item {
   background: var(--navy2); border: 1px solid var(--border); border-top: none;
   padding: 8px 12px; font-size: 0.82rem; cursor: pointer;
@@ -1146,7 +1169,7 @@ tr:hover td { background: rgba(201,162,39,0.05); }
         <div class="sec-header"><span>➕</span><span class="sec-title">REGISTRAR INGRESO</span></div>
         <div class="sec-body">
           <div class="form-grid">
-            <div class="form-full">
+            <div class="form-full" style="position:relative;">
               <div class="field-lbl">NOMBRE COMPLETO *</div>
               <input id="inp_nombre" class="field-inp" placeholder="Ej: Juan Pérez López" autocomplete="off">
               <div id="sugerencias"></div>
