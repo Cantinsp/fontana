@@ -748,27 +748,33 @@
   // ───────────────────────────────────────────────────────
   document.addEventListener("DOMContentLoaded", () => {
     const inpNombre = document.getElementById("inp_nombre");
-    inpNombre.addEventListener("input", async function() {
+    let debounceTimer = null;
+    inpNombre.addEventListener("input", function() {
       const val = this.value.trim();
       if (val.length < 3) { document.getElementById("sugerencias").innerHTML = ""; return; }
-      const snap = await get(refVisitas);
-      const datos = snap.val() || {};
-      const coincidencias = [...new Map(
-        Object.values(datos)
-          .filter(v => v.nombre.toLowerCase().includes(val.toLowerCase()))
-          .map(v => [v.nombre, v])
-      ).values()].slice(0,5);
+      // Pequeña espera para no recalcular en cada tecla mientras se escribe rápido.
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        // Usa los datos que la app ya mantiene en memoria (todasVisitas, actualizados
+        // en tiempo real) en vez de volver a descargar toda la base en cada letra.
+        // Esto es lo que hacía que el autocompletado se sintiera lento con señal débil.
+        const coincidencias = [...new Map(
+          Object.values(todasVisitas)
+            .filter(v => v.nombre.toLowerCase().includes(val.toLowerCase()))
+            .map(v => [v.nombre, v])
+        ).values()].slice(0,5);
 
-      document.getElementById("sugerencias").innerHTML = coincidencias.length ? (`
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 10px;font-size:0.72rem;color:var(--text2);background:var(--navy3);">
-          <span>Toque para autocompletar ↓</span>
-          <span onclick="document.getElementById('sugerencias').innerHTML=''" style="cursor:pointer;padding:2px 6px;">✕</span>
-        </div>
-      ` + coincidencias.map(v => `
-        <div class="sug-item" onclick="autocompletar('${v.nombre}','${v.ci||''}','${v.unidad||''}','${v.residente||''}')">
-          <strong>${v.nombre}</strong> — ${v.unidad || ""}
-        </div>
-      `).join("")) : "";
+        document.getElementById("sugerencias").innerHTML = coincidencias.length ? (`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 10px;font-size:0.72rem;color:var(--text2);background:var(--navy3);">
+            <span>Toque para autocompletar ↓</span>
+            <span onclick="document.getElementById('sugerencias').innerHTML=''" style="cursor:pointer;padding:2px 6px;">✕</span>
+          </div>
+        ` + coincidencias.map(v => `
+          <div class="sug-item" onclick="autocompletar('${v.nombre}','${v.ci||''}','${v.unidad||''}','${v.residente||''}')">
+            <strong>${v.nombre}</strong> — ${v.unidad || ""}
+          </div>
+        `).join("")) : "";
+      }, 150);
     });
     // Si el guardia toca fuera del campo (por ej. para ir directo al
     // siguiente campo) sin elegir una sugerencia, la ocultamos. El
