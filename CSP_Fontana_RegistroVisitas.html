@@ -112,7 +112,11 @@
   // ───────────────────────────────────────────────────────
   //  REGISTRAR INGRESO
   // ───────────────────────────────────────────────────────
+  let enviandoIngreso = false; // evita registros duplicados por doble toque
+
   window.registrarIngreso = async function() {
+    if (enviandoIngreso) return; // ya hay un registro en curso, ignorar el toque repetido
+
     const nombre = document.getElementById("inp_nombre").value.trim();
     const ci     = document.getElementById("inp_ci").value.trim();
     const tipo   = document.getElementById("inp_tipo").value;
@@ -137,12 +141,23 @@
       fechaISO: ahora.toISOString().slice(0,10)
     };
 
+    enviandoIngreso = true;
+    const btn = document.getElementById("btnRegistrarIngreso");
+    const textoOriginalBtn = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+
     try {
       await push(refVisitas, registro);
       limpiarFormularioIngreso();
       mostrarAlerta(`✔ Ingreso registrado: ${nombre}`, "ok");
     } catch (e) {
-      mostrarAlerta("❌ Error al guardar: " + e.message, "error");
+      // Si esto falla (sin conexión, permisos, etc.) el formulario NO se limpia
+      // a propósito, para que no se pierdan los datos ya escritos.
+      console.error("Error al guardar ingreso:", e);
+      mostrarAlerta("❌ No se pudo guardar. Revise su conexión e intente de nuevo. (" + e.message + ")", "error", 7000);
+    } finally {
+      enviandoIngreso = false;
+      if (btn) { btn.disabled = false; btn.textContent = textoOriginalBtn || "↓ REGISTRAR INGRESO"; }
     }
   };
 
@@ -714,12 +729,17 @@
   // ───────────────────────────────────────────────────────
   //  ALERTAS
   // ───────────────────────────────────────────────────────
-  function mostrarAlerta(msg, tipo) {
+  function mostrarAlerta(msg, tipo, duracionMs) {
+    // Oculta el teclado del celular si estaba abierto, para que el mensaje
+    // no quede tapado por el teclado (causa de que "no se vea" el aviso).
+    if (document.activeElement && typeof document.activeElement.blur === "function") {
+      document.activeElement.blur();
+    }
     const el = document.getElementById("alerta");
     el.textContent = msg;
     el.className = "alerta " + tipo;
     el.style.display = "block";
-    setTimeout(() => el.style.display = "none", 3500);
+    setTimeout(() => el.style.display = "none", duracionMs || 3500);
   }
 
   // ───────────────────────────────────────────────────────
@@ -954,9 +974,9 @@ tr:hover td { background: rgba(201,162,39,0.05); }
 
 /* ── ALERTA ── */
 .alerta {
-  display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  display: none; position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
   padding: 10px 22px; border-radius: 8px; font-size: 0.88rem; font-weight: 600;
-  z-index: 999; white-space: nowrap;
+  z-index: 999; white-space: nowrap; max-width: 92vw; box-shadow: 0 2px 10px rgba(0,0,0,.4);
 }
 .alerta.ok    { background: var(--green); color: #fff; }
 .alerta.error { background: var(--red); color: #fff; }
@@ -1167,7 +1187,7 @@ tr:hover td { background: rgba(201,162,39,0.05); }
             </div>
           </div>
           <div style="display:flex;gap:8px;">
-            <button class="btn-reg" onclick="registrarIngreso()" style="flex:1;">↓ REGISTRAR INGRESO</button>
+            <button id="btnRegistrarIngreso" class="btn-reg" onclick="registrarIngreso()" style="flex:1;">↓ REGISTRAR INGRESO</button>
             <button class="btn-reg" onclick="iniciarEscaneoQR()" style="flex:0 0 auto;background:#1e3170;color:#c9a227;border:1px solid #c9a227;">📷 Escanear QR</button>
           </div>
         </div>
