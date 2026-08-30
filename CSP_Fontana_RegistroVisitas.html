@@ -136,8 +136,8 @@
       nombre, ci, tipo, unidad, residente, placa, empresa, obs,
       estado: "dentro",
       horaIngreso: ahora.toISOString(),
-      horaIngresoTexto: ahora.toLocaleTimeString("es-BO", {hour:"2-digit", minute:"2-digit"}),
-      fecha: ahora.toLocaleDateString("es-BO"),
+      horaIngresoTexto: horaTextoSC(ahora),
+      fecha: fechaTextoSC(ahora),
       fechaISO: ahora.toISOString().slice(0,10)
     };
 
@@ -203,7 +203,7 @@
       await update(ref(db, `visitas/${CONDOMINIO}/${key}`), {
         estado: "salió",
         horaSalida: ahora.toISOString(),
-        horaSalidaTexto: ahora.toLocaleTimeString("es-BO", {hour:"2-digit", minute:"2-digit"})
+        horaSalidaTexto: horaTextoSC(ahora)
       });
       mostrarAlerta(`✔ Salida registrada: ${nombre}`, "ok");
     } catch (e) {
