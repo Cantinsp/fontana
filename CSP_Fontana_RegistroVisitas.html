@@ -8,7 +8,7 @@
 <!-- Firebase SDK -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getDatabase, ref, push, onValue, update, query, orderByChild, equalTo, limitToLast, get, set, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+  import { getDatabase, ref, push, onValue, update, query, orderByChild, equalTo, get, set, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
   // ════════════════════════════════════════════════════════
   //  CONFIGURACIÓN FIREBASE — Reemplazar con sus credenciales
@@ -83,10 +83,7 @@
   let todasVisitas = {};
 
   function escucharVisitas() {
-    // Se limita a los últimos 300 registros para no descargar todo el histórico
-    // en cada cambio (esto es lo que causaba la lentitud con muchos registros).
-    const refVisitasReciente = query(refVisitas, limitToLast(300));
-    onValue(refVisitasReciente, (snapshot) => {
+    onValue(refVisitas, (snapshot) => {
       todasVisitas = snapshot.val() || {};
       renderizarBitacora();
       actualizarContadores();
@@ -112,11 +109,7 @@
   // ───────────────────────────────────────────────────────
   //  REGISTRAR INGRESO
   // ───────────────────────────────────────────────────────
-  let enviandoIngreso = false; // evita registros duplicados por doble toque
-
   window.registrarIngreso = async function() {
-    if (enviandoIngreso) return; // ya hay un registro en curso, ignorar el toque repetido
-
     const nombre = document.getElementById("inp_nombre").value.trim();
     const ci     = document.getElementById("inp_ci").value.trim();
     const tipo   = document.getElementById("inp_tipo").value;
@@ -131,41 +124,37 @@
       return;
     }
 
+    // Validación anti-duplicado: verificar si ya está dentro
+    const yaExiste = Object.values(todasVisitas).some(v =>
+      v.estado === "dentro" && (
+        (ci && v.ci && v.ci.trim() === ci) ||
+        (v.nombre.trim().toLowerCase() === nombre.toLowerCase() && v.unidad.trim().toLowerCase() === unidad.toLowerCase())
+      )
+    );
+    if (yaExiste) {
+      mostrarAlerta("⚠ " + nombre + " ya figura como visitante activo dentro del condominio.", "error");
+      return;
+    }
+
     const ahora = new Date();
     const registro = {
       nombre, ci, tipo, unidad, residente, placa, empresa, obs,
       estado: "dentro",
       horaIngreso: ahora.toISOString(),
-      horaIngresoTexto: horaTextoSC(ahora),
-      fecha: fechaTextoSC(ahora),
+      horaIngresoTexto: ahora.toLocaleTimeString("es-BO", {hour:"2-digit", minute:"2-digit"}),
+      fecha: ahora.toLocaleDateString("es-BO"),
       fechaISO: ahora.toISOString().slice(0,10)
     };
 
-    enviandoIngreso = true;
-    const btn = document.getElementById("btnRegistrarIngreso");
-    const textoOriginalBtn = btn ? btn.textContent : "";
-    if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
-
-    try {
-      await push(refVisitas, registro);
-      limpiarFormularioIngreso();
-      mostrarAlerta(`✔ Ingreso registrado: ${nombre}`, "ok");
-    } catch (e) {
-      // Si esto falla (sin conexión, permisos, etc.) el formulario NO se limpia
-      // a propósito, para que no se pierdan los datos ya escritos.
-      console.error("Error al guardar ingreso:", e);
-      mostrarAlerta("❌ No se pudo guardar. Revise su conexión e intente de nuevo. (" + e.message + ")", "error", 7000);
-    } finally {
-      enviandoIngreso = false;
-      if (btn) { btn.disabled = false; btn.textContent = textoOriginalBtn || "↓ REGISTRAR INGRESO"; }
-    }
+    await push(refVisitas, registro);
+    limpiarFormularioIngreso();
+    mostrarAlerta(`✔ Ingreso registrado: ${nombre}`, "ok");
   };
 
   function limpiarFormularioIngreso() {
     ["inp_nombre","inp_ci","inp_unidad","inp_residente","inp_placa","inp_empresa","inp_obs"]
       .forEach(id => document.getElementById(id).value = "");
     document.getElementById("inp_tipo").selectedIndex = 0;
-    document.getElementById("sugerencias").innerHTML = "";
   }
 
   // ───────────────────────────────────────────────────────
@@ -199,16 +188,12 @@
 
   window.registrarSalida = async function(key, nombre) {
     const ahora = new Date();
-    try {
-      await update(ref(db, `visitas/${CONDOMINIO}/${key}`), {
-        estado: "salió",
-        horaSalida: ahora.toISOString(),
-        horaSalidaTexto: horaTextoSC(ahora)
-      });
-      mostrarAlerta(`✔ Salida registrada: ${nombre}`, "ok");
-    } catch (e) {
-      mostrarAlerta("❌ Error al registrar salida: " + e.message, "error");
-    }
+    await update(ref(db, `visitas/${CONDOMINIO}/${key}`), {
+      estado: "salió",
+      horaSalida: ahora.toISOString(),
+      horaSalidaTexto: ahora.toLocaleTimeString("es-BO", {hour:"2-digit", minute:"2-digit"})
+    });
+    mostrarAlerta(`✔ Salida registrada: ${nombre}`, "ok");
   };
 
   // ───────────────────────────────────────────────────────
@@ -234,15 +219,21 @@
     let entradas = Object.entries(todasVisitas)
       .sort((a,b) => new Date(b[1].horaIngreso) - new Date(a[1].horaIngreso));
 
-    // Filtro
-    if (filtroActual === "dentro")   entradas = entradas.filter(([k,v]) => v.estado === "dentro");
-    if (filtroActual === "salidos")  entradas = entradas.filter(([k,v]) => v.estado === "salió");
-    if (filtroActual === "hoy")      entradas = entradas.filter(([k,v]) => v.fechaISO === fechaHoySC());
-    if (["visita","delivery","servicio","proveedor"].includes(filtroActual))
-      entradas = entradas.filter(([k,v]) => v.tipo?.toLowerCase() === filtroActual);
+    // Si hay búsqueda activa en modo admin, mostrar todos los registros históricos
+    const busquedaActiva = busqueda && busqueda.length >= 2;
+    const esAdminBuscando = modoActual === "admin" && busquedaActiva;
 
-    // Búsqueda
-    if (busqueda) entradas = entradas.filter(([k,v]) =>
+    if (!esAdminBuscando) {
+      // Filtro normal solo cuando no hay búsqueda activa en admin
+      if (filtroActual === "dentro")   entradas = entradas.filter(([k,v]) => v.estado === "dentro");
+      if (filtroActual === "salidos")  entradas = entradas.filter(([k,v]) => v.estado === "salió");
+      if (filtroActual === "hoy")      entradas = entradas.filter(([k,v]) => v.fechaISO === fechaHoySC());
+      if (["visita","delivery","servicio","proveedor"].includes(filtroActual))
+        entradas = entradas.filter(([k,v]) => v.tipo?.toLowerCase() === filtroActual);
+    }
+
+    // Búsqueda en todos los registros históricos
+    if (busquedaActiva) entradas = entradas.filter(([k,v]) =>
       (v.nombre||"").toLowerCase().includes(busqueda) ||
       (v.ci||"").toLowerCase().includes(busqueda) ||
       (v.unidad||"").toLowerCase().includes(busqueda)
@@ -259,7 +250,7 @@
         <thead>
           <tr>
             <th>#</th><th>Nombre</th><th>CI</th><th>Unidad</th><th>Tipo</th>
-            <th>Residente que autoriza</th><th>Placa</th><th>Fecha</th><th>Ingreso</th><th>Salida</th><th>Estado</th><th>Observaciones</th>
+            <th>Residente que autoriza</th><th>Placa</th><th>Ingreso</th><th>Salida</th><th>Estado</th><th>Observaciones</th>
           </tr>
         </thead>
         <tbody>
@@ -272,7 +263,6 @@
               <td><span class="badge badge-${v.tipo?.toLowerCase() || 'visita'}">${v.tipo||"—"}</span></td>
               <td>${v.residente || "—"}</td>
               <td>${v.placa || "—"}</td>
-              <td>${v.fechaISO ? v.fechaISO.split("-").reverse().join("/") : "—"}</td>
               <td>${v.horaIngresoTexto || "—"}</td>
               <td>${v.horaSalidaTexto || "—"}</td>
               <td><span class="estado-${v.estado === 'dentro' ? 'dentro' : 'salio'}">${v.estado === "dentro" ? "● Dentro" : "✓ Salió"}</span></td>
@@ -303,17 +293,9 @@
   // ───────────────────────────────────────────────────────
   //  EXPORTAR EXCEL (CSV)
   // ───────────────────────────────────────────────────────
-  window.exportarCSV = async function() {
+  window.exportarCSV = function() {
     const mes = document.getElementById("sel_mes").value;
-    let datosCompletos;
-    try {
-      const snap = await get(refVisitas);
-      datosCompletos = snap.val() || {};
-    } catch (e) {
-      mostrarAlerta("❌ No se pudo leer el histórico completo: " + e.message, "error");
-      return;
-    }
-    const entradas = Object.values(datosCompletos)
+    const entradas = Object.values(todasVisitas)
       .filter(v => !mes || v.fechaISO?.startsWith(mes))
       .sort((a,b) => new Date(a.horaIngreso) - new Date(b.horaIngreso));
 
@@ -323,7 +305,7 @@
     const filas = entradas.map(v => [
       v.nombre, v.ci||"", v.tipo||"", v.unidad, v.residente||"",
       v.placa||"", v.empresa||"", v.horaIngresoTexto||"", v.horaSalidaTexto||"",
-      v.estado||"", (v.fechaISO ? v.fechaISO.split("-").reverse().join("/") : ""), v.obs||""
+      v.estado||"", v.fecha||"", v.obs||""
     ].map(c => `"${String(c).replace(/"/g,'""')}"`).join(","));
 
     const bom = "\uFEFF";
@@ -392,15 +374,10 @@
     };
 
     // Guardar en Firebase
-    try {
-      await push(ref(db, "visitas/qr_fontana_family_club"), qrData);
-      // Guardar referencia separada para QR
-      const qrRef = ref(db, "qr/fontana_family_club/" + qrId);
-      await set(qrRef, qrData);
-    } catch (e) {
-      mostrarAlerta("❌ Error al generar QR: " + e.message, "error");
-      return;
-    }
+    await push(ref(db, "visitas/qr_fontana_family_club"), qrData);
+    // Guardar referencia separada para QR
+    const qrRef = ref(db, "qr/fontana_family_club/" + qrId);
+    await set(qrRef, qrData);
 
     qrDataActual = qrData;
 
@@ -626,12 +603,8 @@
 
   window.revocarQR = async function(k) {
     if (confirm("¿Revocar este QR? El visitante no podrá usarlo.")) {
-      try {
-        await remove(ref(db, "qr/fontana_family_club/" + k));
-        mostrarAlerta("QR revocado.", "ok");
-      } catch (e) {
-        mostrarAlerta("❌ Error al revocar: " + e.message, "error");
-      }
+      await remove(ref(db, "qr/fontana_family_club/" + k));
+      mostrarAlerta("QR revocado.", "ok");
     }
   };
 
@@ -730,58 +703,34 @@
   // ───────────────────────────────────────────────────────
   //  ALERTAS
   // ───────────────────────────────────────────────────────
-  function mostrarAlerta(msg, tipo, duracionMs) {
-    // Oculta el teclado del celular si estaba abierto, para que el mensaje
-    // no quede tapado por el teclado (causa de que "no se vea" el aviso).
-    if (document.activeElement && typeof document.activeElement.blur === "function") {
-      document.activeElement.blur();
-    }
+  function mostrarAlerta(msg, tipo) {
     const el = document.getElementById("alerta");
     el.textContent = msg;
     el.className = "alerta " + tipo;
     el.style.display = "block";
-    setTimeout(() => el.style.display = "none", duracionMs || 3500);
+    setTimeout(() => el.style.display = "none", 3500);
   }
 
   // ───────────────────────────────────────────────────────
   //  AUTOCOMPLETADO
   // ───────────────────────────────────────────────────────
   document.addEventListener("DOMContentLoaded", () => {
-    const inpNombre = document.getElementById("inp_nombre");
-    let debounceTimer = null;
-    inpNombre.addEventListener("input", function() {
+    document.getElementById("inp_nombre").addEventListener("input", async function() {
       const val = this.value.trim();
       if (val.length < 3) { document.getElementById("sugerencias").innerHTML = ""; return; }
-      // Pequeña espera para no recalcular en cada tecla mientras se escribe rápido.
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        // Usa los datos que la app ya mantiene en memoria (todasVisitas, actualizados
-        // en tiempo real) en vez de volver a descargar toda la base en cada letra.
-        // Esto es lo que hacía que el autocompletado se sintiera lento con señal débil.
-        const coincidencias = [...new Map(
-          Object.values(todasVisitas)
-            .filter(v => v.nombre.toLowerCase().includes(val.toLowerCase()))
-            .map(v => [v.nombre, v])
-        ).values()].slice(0,5);
+      const snap = await get(refVisitas);
+      const datos = snap.val() || {};
+      const coincidencias = [...new Map(
+        Object.values(datos)
+          .filter(v => v.nombre.toLowerCase().includes(val.toLowerCase()))
+          .map(v => [v.nombre, v])
+      ).values()].slice(0,5);
 
-        document.getElementById("sugerencias").innerHTML = coincidencias.length ? (`
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 10px;font-size:0.72rem;color:var(--text2);background:var(--navy3);">
-            <span>Toque para autocompletar ↓</span>
-            <span onclick="document.getElementById('sugerencias').innerHTML=''" style="cursor:pointer;padding:2px 6px;">✕</span>
-          </div>
-        ` + coincidencias.map(v => `
-          <div class="sug-item" onclick="autocompletar('${v.nombre}','${v.ci||''}','${v.unidad||''}','${v.residente||''}')">
-            <strong>${v.nombre}</strong> — ${v.unidad || ""}
-          </div>
-        `).join("")) : "";
-      }, 150);
-    });
-    // Si el guardia toca fuera del campo (por ej. para ir directo al
-    // siguiente campo) sin elegir una sugerencia, la ocultamos. El
-    // pequeño retraso deja que el "click" sobre una sugerencia se
-    // registre primero (el blur ocurre antes que el click).
-    inpNombre.addEventListener("blur", function() {
-      setTimeout(() => { document.getElementById("sugerencias").innerHTML = ""; }, 200);
+      document.getElementById("sugerencias").innerHTML = coincidencias.map(v => `
+        <div class="sug-item" onclick="autocompletar('${v.nombre}','${v.ci||''}','${v.unidad||''}','${v.residente||''}')">
+          <strong>${v.nombre}</strong> — ${v.unidad || ""}
+        </div>
+      `).join("");
     });
   });
 
@@ -921,16 +870,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Arial
 .btn-reg:hover { opacity: 0.88; }
 
 /* ── AUTOCOMPLETADO ── */
-/* Antes esto era position:relative y empujaba hacia abajo el resto del
-   formulario (CI, Unidad, etc.), lo que hacía que un toque rápido en
-   secuencia cayera sobre una sugerencia y llenara los campos con datos
-   de una visita anterior sin que el guardia lo pidiera. Ahora flota
-   encima sin mover nada debajo. */
-#sugerencias {
-  position: absolute; left: 0; right: 0; top: 100%;
-  z-index: 50; max-height: 220px; overflow-y: auto;
-  border-radius: 0 0 8px 8px; box-shadow: 0 6px 14px rgba(0,0,0,.4);
-}
+#sugerencias { position: relative; }
 .sug-item {
   background: var(--navy2); border: 1px solid var(--border); border-top: none;
   padding: 8px 12px; font-size: 0.82rem; cursor: pointer;
@@ -1003,9 +943,9 @@ tr:hover td { background: rgba(201,162,39,0.05); }
 
 /* ── ALERTA ── */
 .alerta {
-  display: none; position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+  display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
   padding: 10px 22px; border-radius: 8px; font-size: 0.88rem; font-weight: 600;
-  z-index: 999; white-space: nowrap; max-width: 92vw; box-shadow: 0 2px 10px rgba(0,0,0,.4);
+  z-index: 999; white-space: nowrap;
 }
 .alerta.ok    { background: var(--green); color: #fff; }
 .alerta.error { background: var(--red); color: #fff; }
@@ -1175,7 +1115,7 @@ tr:hover td { background: rgba(201,162,39,0.05); }
         <div class="sec-header"><span>➕</span><span class="sec-title">REGISTRAR INGRESO</span></div>
         <div class="sec-body">
           <div class="form-grid">
-            <div class="form-full" style="position:relative;">
+            <div class="form-full">
               <div class="field-lbl">NOMBRE COMPLETO *</div>
               <input id="inp_nombre" class="field-inp" placeholder="Ej: Juan Pérez López" autocomplete="off">
               <div id="sugerencias"></div>
@@ -1216,7 +1156,7 @@ tr:hover td { background: rgba(201,162,39,0.05); }
             </div>
           </div>
           <div style="display:flex;gap:8px;">
-            <button id="btnRegistrarIngreso" class="btn-reg" onclick="registrarIngreso()" style="flex:1;">↓ REGISTRAR INGRESO</button>
+            <button class="btn-reg" onclick="registrarIngreso()" style="flex:1;">↓ REGISTRAR INGRESO</button>
             <button class="btn-reg" onclick="iniciarEscaneoQR()" style="flex:0 0 auto;background:#1e3170;color:#c9a227;border:1px solid #c9a227;">📷 Escanear QR</button>
           </div>
         </div>
