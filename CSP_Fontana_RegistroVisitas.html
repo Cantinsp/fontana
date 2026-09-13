@@ -718,6 +718,22 @@
   // ───────────────────────────────────────────────────────
   //  ALERTAS
   // ───────────────────────────────────────────────────────
+  window.limpiarRegistrosAntiguos = async function() {
+    if (!confirm("¿Eliminar TODOS los registros anteriores a septiembre 2026? Esta acción no se puede deshacer.")) return;
+    mostrarAlerta("⏳ Limpiando registros antiguos...", "ok");
+    const snapCompleto = await get(refVisitas);
+    const datos = snapCompleto.val() || {};
+    const corte = "2026-09-01";
+    let eliminados = 0;
+    for (const [key, val] of Object.entries(datos)) {
+      if (val.fechaISO && val.fechaISO < corte) {
+        await remove(ref(db, "visitas/" + CONDOMINIO + "/" + key));
+        eliminados++;
+      }
+    }
+    mostrarAlerta("✅ Se eliminaron " + eliminados + " registros anteriores a septiembre 2026.", "ok");
+  };
+
   function mostrarAlerta(msg, tipo) {
     const el = document.getElementById("alerta");
     el.textContent = msg;
@@ -1274,6 +1290,7 @@ tr:hover td { background: rgba(201,162,39,0.05); }
             </div>
             <button class="btn-exp" onclick="exportarCSV()">⬇ Exportar Excel (CSV)</button>
             <button class="btn-exp btn-exp-pdf" onclick="exportarPDF()">🖨 Imprimir / PDF</button>
+            <button class="btn-exp" onclick="limpiarRegistrosAntiguos()" style="background:#c0392b;color:#fff;border-color:#c0392b;">🗑 Limpiar registros anteriores a sept 2026</button>
           </div>
         </div>
       </div>
