@@ -302,9 +302,15 @@
   // ───────────────────────────────────────────────────────
   //  EXPORTAR EXCEL (CSV)
   // ───────────────────────────────────────────────────────
-  window.exportarCSV = function() {
+  window.exportarCSV = async function() {
     const mes = document.getElementById("sel_mes").value;
-    const entradas = Object.values(todasVisitas)
+    mostrarAlerta("⏳ Cargando todos los registros...", "ok");
+
+    // Cargar TODOS los registros históricos para exportar
+    const snapCompleto = await get(refVisitas);
+    const todosLosRegistros = snapCompleto.val() || {};
+
+    const entradas = Object.values(todosLosRegistros)
       .filter(v => !mes || v.fechaISO?.startsWith(mes))
       .sort((a,b) => new Date(a.horaIngreso) - new Date(b.horaIngreso));
 
@@ -326,7 +332,7 @@
     a.download = `CSP_Visitas_Fontana Family Club_${mes || "completo"}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    mostrarAlerta("✔ Exportado correctamente.", "ok");
+    mostrarAlerta("✔ Exportado " + entradas.length + " registros correctamente.", "ok");
   };
 
   // ───────────────────────────────────────────────────────
