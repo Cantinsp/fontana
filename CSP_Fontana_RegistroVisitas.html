@@ -8,7 +8,7 @@
 <!-- Firebase SDK -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getDatabase, ref, push, onValue, update, query, orderByChild, equalTo, get, set, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+  import { getDatabase, ref, push, onValue, update, query, orderByChild, startAt, limitToLast, get, set, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
   // ════════════════════════════════════════════════════════
   //  CONFIGURACIÓN FIREBASE — Reemplazar con sus credenciales
@@ -83,7 +83,16 @@
   let todasVisitas = {};
 
   function escucharVisitas() {
-    onValue(refVisitas, (snapshot) => {
+    // Guardias: solo últimos 30 días para carga rápida
+    // Admin: todos los registros históricos
+    const hace30 = new Date(new Date().getTime() - 4*60*60*1000 - 30*24*60*60*1000);
+    const hace30ISO = hace30.toISOString().slice(0,10);
+
+    const refCarga = modoActual === "admin"
+      ? refVisitas
+      : query(refVisitas, orderByChild("fechaISO"), startAt(hace30ISO));
+
+    onValue(refCarga, (snapshot) => {
       todasVisitas = snapshot.val() || {};
       renderizarBitacora();
       actualizarContadores();
