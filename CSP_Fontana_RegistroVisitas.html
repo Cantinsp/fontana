@@ -133,7 +133,7 @@
       return;
     }
 
-    // Validación anti-duplicado: verificar si ya está dentro
+    // Validación anti-duplicado: avisar pero permitir continuar
     const yaExiste = Object.values(todasVisitas).some(v =>
       v.estado === "dentro" && (
         (ci && v.ci && v.ci.trim() === ci) ||
@@ -141,8 +141,8 @@
       )
     );
     if (yaExiste) {
-      mostrarAlerta("⚠ " + nombre + " ya figura como visitante activo dentro del condominio.", "error");
-      return;
+      const confirmar = confirm("⚠ " + nombre + " figura como visitante activo. ¿Confirmar de todas formas el nuevo ingreso?");
+      if (!confirmar) return;
     }
 
     const ahora = new Date();
