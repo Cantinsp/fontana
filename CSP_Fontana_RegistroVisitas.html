@@ -956,6 +956,8 @@ tr:hover td { background: rgba(201,162,39,0.05); }
 .badge-delivery  { background: #3a2500; color: var(--gold); border: 1px solid var(--gold); }
 .badge-servicio  { background: #1a3a20; color: #6add8a; border: 1px solid #2a7e3a; }
 .badge-proveedor { background: #3a1a3a; color: #dd6add; border: 1px solid #7e2a7e; }
+.badge-doméstica { background: #1a3a2a; color: #6addb0; border: 1px solid #2a7e5a; }
+.badge-móvil { background: #1a2a3a; color: #6ab0dd; border: 1px solid #2a5a7e; }
 
 /* ── ESTADOS ── */
 .estado-dentro { color: var(--green); font-weight: 600; font-size: 0.8rem; }
@@ -1162,6 +1164,8 @@ tr:hover td { background: rgba(201,162,39,0.05); }
               <select id="inp_tipo" class="field-sel">
                 <option value="">Seleccionar...</option>
                 <option value="Visita">Visita</option>
+                <option value="Doméstica">Doméstica</option>
+                <option value="Móvil">Móvil</option>
                 <option value="Delivery">Delivery</option>
                 <option value="Servicio">Servicio</option>
                 <option value="Proveedor">Proveedor</option>
@@ -1223,6 +1227,8 @@ tr:hover td { background: rgba(201,162,39,0.05); }
               <select id="qr_tipo" class="field-sel">
                 <option value="">Seleccionar...</option>
                 <option value="Visita">Visita</option>
+                <option value="Doméstica">Doméstica</option>
+                <option value="Móvil">Móvil</option>
                 <option value="Delivery">Delivery</option>
                 <option value="Servicio">Servicio</option>
                 <option value="Proveedor">Proveedor</option>
@@ -1315,6 +1321,8 @@ tr:hover td { background: rgba(201,162,39,0.05); }
             <div class="pill"        id="pill_delivery" onclick="setFiltro('delivery')">DELIVERY</div>
             <div class="pill"        id="pill_servicio" onclick="setFiltro('servicio')">SERVICIO</div>
             <div class="pill"        id="pill_proveedor" onclick="setFiltro('proveedor')">PROVEEDOR</div>
+          <div class="pill"        id="pill_domestica" onclick="setFiltro('doméstica')">DOMÉSTICA</div>
+          <div class="pill"        id="pill_movil"     onclick="setFiltro('móvil')">MÓVIL</div>
           </div>
           <div id="tablaBitacora" style="overflow-x:auto;"><div class="empty">Cargando datos...</div></div>
         </div>
