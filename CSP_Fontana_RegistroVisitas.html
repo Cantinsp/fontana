@@ -306,13 +306,7 @@
   // ───────────────────────────────────────────────────────
   window.exportarCSV = async function() {
     const mes = document.getElementById("sel_mes").value;
-    mostrarAlerta("⏳ Cargando todos los registros...", "ok");
-
-    // Cargar TODOS los registros históricos para exportar
-    const snapCompleto = await get(refVisitas);
-    const todosLosRegistros = snapCompleto.val() || {};
-
-    const entradas = Object.values(todosLosRegistros)
+    const entradas = Object.values(todasVisitas)
       .filter(v => !mes || v.fechaISO?.startsWith(mes))
       .sort((a,b) => new Date(a.horaIngreso) - new Date(b.horaIngreso));
 
@@ -748,11 +742,10 @@
   //  AUTOCOMPLETADO
   // ───────────────────────────────────────────────────────
   document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("inp_nombre").addEventListener("input", async function() {
+    document.getElementById("inp_nombre").addEventListener("input", function() {
       const val = this.value.trim();
       if (val.length < 3) { document.getElementById("sugerencias").innerHTML = ""; return; }
-      const snap = await get(refVisitas);
-      const datos = snap.val() || {};
+      const datos = todasVisitas;
       const coincidencias = [...new Map(
         Object.values(datos)
           .filter(v => v.nombre.toLowerCase().includes(val.toLowerCase()))
